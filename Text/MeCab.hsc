@@ -1,4 +1,5 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -63,7 +64,7 @@ newtype MeCab =
   deriving (Eq, Ord)
 
 mkMeCab :: Ptr MeCab -> IO MeCab
-mkMeCab p =
+mkMeCab !p =
   MeCab <$> newForeignPtr p_mecab_destroy p
 
 data Stat =
@@ -85,7 +86,7 @@ data Node s = Node
     nodeSurface :: s
     -- | Feature string
   , nodeFeature :: s
-    -- | Uength of the surface form including white space before the morph
+    -- | Length of the surface form including white space before the morph
   , nodeRlength :: Int
     -- | Unique node id
   , nodeId :: Int
@@ -114,7 +115,7 @@ data Node s = Node
   } deriving (Eq, Read, Show)
 
 peekNodes :: MeCabString s => Ptr (Node s) -> IO [Node s]
-peekNodes ptr
+peekNodes !ptr
   | ptr == nullPtr =
     return []
   | otherwise =
@@ -122,10 +123,10 @@ peekNodes ptr
           <*> (peekNodes =<< (#peek mecab_node_t, next) ptr)
 
 peekNode :: MeCabString s => Ptr (Node s) -> IO (Node s)
-peekNode ptr = do
-  sfc <- do
-    p <- (#peek mecab_node_t, surface) ptr
-    len <- (#peek mecab_node_t, length) ptr
+peekNode !ptr = do
+  !sfc <- do
+    !p <- (#peek mecab_node_t, surface) ptr
+    !len <- (#peek mecab_node_t, length) ptr
     fromBS <$> B.packCStringLen (p, fromIntegral (len :: CUShort))
   Node
     <$> return sfc
@@ -160,29 +161,29 @@ instance Exception MeCabError
 
 -- | Initializing MeCab by passing command-line args
 new :: [String] -> IO MeCab
-new args =
+new !args =
   withCStrings args $ \argc argv -> do
-    p <- mecab_new (fromIntegral argc) argv
+    !p <- mecab_new (fromIntegral argc) argv
     when (p == nullPtr) $
       throwIO =<< (MeCabError <$> strerror nullPtr)
     mkMeCab p
 
 -- | Initializing MeCab by passing concatenated command-line args
 new2 :: String -> IO MeCab
-new2 arg =
-  withCString arg $ \pstr ->
+new2 !arg =
+  withCString arg $! \pstr ->
   mkMeCab =<< mecab_new2 pstr
 
 withCStrings :: [String] -> (Int -> Ptr CString -> IO a) -> IO a
-withCStrings ss f =
-  withCStrings' ss $ \ps ->
+withCStrings !ss !f =
+  withCStrings' ss $! \ps ->
     withArrayLen ps f
 
 withCStrings' :: [String] -> ([CString] -> IO a) -> IO a
-withCStrings' strs f = go [] strs where
-  go ps [] = f $ reverse ps
-  go ps (s:ss) =
-    withCString s $ \p -> go (p:ps) ss
+withCStrings' !strs !f = go [] strs where
+  go !ps [] = f $! reverse ps
+  go !ps (!s:ss) =
+    withCString s $! \p -> go (p:ps) ss
 
 -- | Get MeCab version
 version :: IO String
@@ -190,7 +191,7 @@ version =
   peekCString =<< mecab_version
 
 strerror :: Ptr MeCab -> IO String
-strerror p =
+strerror !p =
   peekCString =<< mecab_strerror p
 
 -- String Types
@@ -215,88 +216,88 @@ instance MeCabString T.Text where
 
 -- | Parse given string and obtain results as a string format
 parse :: MeCabString s => MeCab -> s -> IO s
-parse m txt = withForeignPtr (unMeCab m) $ \pm ->
-  B.useAsCStringLen (toBS txt) $ \(pstr, len) -> do
-    p <- mecab_sparse_tostr2 pm pstr (fromIntegral len)
+parse !m !txt = withForeignPtr (unMeCab m) $! \pm ->
+  B.useAsCStringLen (toBS txt) $! \(pstr, len) -> do
+    !p <- mecab_sparse_tostr2 pm pstr (fromIntegral len)
     when (p == nullPtr) $ throwIO =<< (MeCabError <$> strerror pm)
     packCString p
 
 -- | Parse given string and obtain results as a nodes
 parseToNodes :: MeCabString s => MeCab -> s -> IO [Node s]
-parseToNodes m txt = withForeignPtr (unMeCab m) $ \pm ->
-  B.useAsCStringLen (toBS txt) $ \(pstr, len) -> do
+parseToNodes !m !txt = withForeignPtr (unMeCab m) $! \pm ->
+  B.useAsCStringLen (toBS txt) $! \(pstr, len) -> do
     p <- mecab_sparse_tonode2 pm pstr (fromIntegral len)
-    when (p == nullPtr) $ throwIO =<< (MeCabError <$> strerror pm)
+    when (p == nullPtr) $! throwIO =<< (MeCabError <$> strerror pm)
     peekNodes p
 
 -- N-best parsing
 
 -- | Parse given string and obtain whole N-best results as a string format
 parseNBest :: MeCabString s => MeCab -> Int -> s -> IO s
-parseNBest m n txt = withForeignPtr (unMeCab m) $ \pm ->
-  B.useAsCStringLen (toBS txt) $ \(pstr, len) -> do
-    p <- mecab_nbest_sparse_tostr2 pm (fromIntegral n) pstr (fromIntegral len)
-    when (p == nullPtr) $ throwIO =<< (MeCabError <$> strerror pm)
+parseNBest !m !n txt = withForeignPtr (unMeCab m) $! \pm ->
+  B.useAsCStringLen (toBS txt) $! \(pstr, len) -> do
+    !p <- mecab_nbest_sparse_tostr2 pm (fromIntegral n) pstr (fromIntegral len)
+    when (p == nullPtr) $! throwIO =<< (MeCabError <$> strerror pm)
     packCString p
 
 -- | Parse given string and prepare obtaining N-best results
 parseNBestInit :: MeCabString s => MeCab -> s -> IO ()
-parseNBestInit m txt = withForeignPtr (unMeCab m) $ \pm ->
-  B.useAsCStringLen (toBS txt) $ \(pstr, len) -> do
-    ret <- mecab_nbest_init2 pm pstr (fromIntegral len)
-    when (ret /= 1) $ throwIO =<< (MeCabError <$> strerror pm)
+parseNBestInit !m !txt = withForeignPtr (unMeCab m) $! \pm ->
+  B.useAsCStringLen (toBS txt) $! \(pstr, len) -> do
+    !ret <- mecab_nbest_init2 pm pstr (fromIntegral len)
+    when (ret /= 1) $! throwIO =<< (MeCabError <$> strerror pm)
 
 -- | Obtain next result as a string format
 nBestNext :: MeCabString s => MeCab -> IO (Maybe s)
-nBestNext m = withForeignPtr (unMeCab m) $ \pm -> do
-  r <- mecab_nbest_next_tostr pm
+nBestNext !m = withForeignPtr (unMeCab m) $! \pm -> do
+  !r <- mecab_nbest_next_tostr pm
   if r == nullPtr
     then return Nothing
     else Just <$> packCString r
 
 -- | Obtain next result as a nodes
 nBestNextNodes :: MeCabString s => MeCab -> IO (Maybe [Node s])
-nBestNextNodes m = withForeignPtr (unMeCab m) $ \pm -> do
-  p <- mecab_nbest_next_tonode pm
+nBestNextNodes !m = withForeignPtr (unMeCab m) $! \pm -> do
+  !p <- mecab_nbest_next_tonode pm
   if p == nullPtr
     then return Nothing
     else Just <$> peekNodes p
 
 packCString :: MeCabString s => CString -> IO s
-packCString p = fromBS <$> B.packCString p
+packCString !p = fromBS <$> B.packCString p
 
 --
 
 getPartial :: MeCab -> IO Bool
-getPartial m = withForeignPtr (unMeCab m) $ \pm ->
+getPartial !m = withForeignPtr (unMeCab m) $! \pm ->
   (==1) <$> mecab_get_partial pm
 
 setPartial :: MeCab -> Bool -> IO ()
-setPartial m b = withForeignPtr (unMeCab m) $ \pm ->
+setPartial !m !b = withForeignPtr (unMeCab m) $! \pm ->
   mecab_set_partial pm (if b then 1 else 0)
 
 getTheta :: MeCab -> IO Double
-getTheta m = withForeignPtr (unMeCab m) $ \pm ->
-  liftM realToFrac $ mecab_get_theta pm
+getTheta !m = withForeignPtr (unMeCab m) $! \pm ->
+  liftM realToFrac $! mecab_get_theta pm
 
 setTheta :: MeCab -> Double -> IO ()
-setTheta m f = withForeignPtr (unMeCab m) $ \pm ->
+setTheta !m !f = withForeignPtr (unMeCab m) $! \pm ->
   mecab_set_theta pm (realToFrac f)
 
 getLatticeLevel :: MeCab -> IO Int
-getLatticeLevel m = withForeignPtr (unMeCab m) $ \pm ->
+getLatticeLevel !m = withForeignPtr (unMeCab m) $! \pm ->
   fromIntegral <$> mecab_get_lattice_level pm
 
 setLatticeLevel :: MeCab -> Int -> IO ()
-setLatticeLevel m ll = withForeignPtr (unMeCab m) $ \pm ->
-  mecab_set_lattice_level pm (fromIntegral ll)
+setLatticeLevel !m !ll = withForeignPtr (unMeCab m) $! \pm ->
+  mecab_set_lattice_level pm $! fromIntegral ll
 
 getAllMorphs :: MeCab -> IO Int
-getAllMorphs m = withForeignPtr (unMeCab m) $ \pm ->
+getAllMorphs !m = withForeignPtr (unMeCab m) $! \pm ->
   fromIntegral <$> mecab_get_all_morphs pm
 
 setAllMorphs :: MeCab -> Int -> IO ()
-setAllMorphs m am = withForeignPtr (unMeCab m) $ \pm ->
+setAllMorphs !m !am = withForeignPtr (unMeCab m) $! \pm ->
   mecab_set_all_morphs pm (fromIntegral am)
 
 --
