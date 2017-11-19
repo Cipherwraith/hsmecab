@@ -35,4 +35,4 @@ test-suite test
 
 Source-repository head
   Type:                 git
-  Location:             git@github.com:tanakh/hsmecab.git
+  Location:             git@github.com:cipherwraith/hsmecab.git
